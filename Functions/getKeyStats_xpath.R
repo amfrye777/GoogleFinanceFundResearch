@@ -73,7 +73,7 @@ getKeyStats_xpath <- function(symbol="Finder") {
       #Loop through PageLookup values to define data.frame yahoo values
     PageCnt<- 1
     for(PageCnt in 1:nrow(GooglePageLookup)){
-      html_text <- xmlTreeParse(paste0(GooglePageLookup$URL[PageCnt], symbol), encoding="UTF-8")
+      html_text <- htmlParse(paste0(GooglePageLookup$URL[PageCnt], symbol), encoding="UTF-8")
       nodes     <- getNodeSet(html_text,GooglePageLookup$XPATHQuery[PageCnt])      
 
 paste0("//div[contains(",GooglePageLookup$AttrType[PageCnt],",'",GooglePageLookup$AttrValue[PageCnt],"')]")
@@ -137,6 +137,7 @@ registerDoParallel(cl)
 getDoParWorkers()
 
 TickerList<-getKeyStats_xpath()
+
 # TickerList<-TickerList[1:100]
 #print(paste("Estimated Time to completion:",length(TickerList)/3/60/60,"Hours"))
 StartTime<-Sys.time()
@@ -146,11 +147,11 @@ StartTime<-Sys.time()
   YahooDataFrame<-foreach(TickerCnt = 1:length(TickerList), .combine = rbind,.packages = 'XML') %dopar% 
                       {
                         getKeyStats_xpath(TickerList[[TickerCnt]])
-                        if(TickerCnt %% 299 == 0) {
-                          diff<-as.numeric(Sys.time()-StartTime)
-                          sleepTime<-(60-(diff %% 60))*30 ## only 400 yahoo scrapes allowed every half hour per core(i.e. 1200 scrapes per half hour)
-                          Sys.sleep(sleepTime)
-                        }
+                        # if(TickerCnt %% 299 == 0) {
+                        #   diff<-as.numeric(Sys.time()-StartTime)
+                        #   sleepTime<-(60-(diff %% 60))*30 ## only 400 yahoo scrapes allowed every half hour per core(i.e. 1200 scrapes per half hour)
+                        #   Sys.sleep(sleepTime)
+                        # }
                       }
 EndTime<-Sys.time()
 print(EndTime-StartTime)
