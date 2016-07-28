@@ -1,0 +1,10 @@
+name: FundScreenLookup
+account: amfrye777
+server: shinyapps.io
+appId: 110882
+bundleId: 490010
+url: https://amfrye777.shinyapps.io/FundScreenLookup/
+when: 1467006557.97343
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: getKeyStats_xpath.R|LoadTickers.R
