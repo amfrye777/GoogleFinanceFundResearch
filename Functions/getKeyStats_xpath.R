@@ -22,8 +22,9 @@ library(plyr)
 library(formattable)
 library(doParallel)
 library(foreach)
+library(quantmod) 
 
-#symbol<"FOCPX"
+symbol<-"FOCPX"
 
 getKeyStats_xpath <- function(symbol="Finder") {
   ############################################################################################  
@@ -31,13 +32,13 @@ getKeyStats_xpath <- function(symbol="Finder") {
   if (symbol == "Finder") {
       #Initialize TickerList character vector 
     TickerList  <- vector(mode = "character", length = 1)
-    
+
       #Loop through Letters A:Z from eoddata.com to identify full list of funds available
     lettercnt <- 1
     for (lettercnt in 1:26) {
       html_text <- htmlParse(paste0("http://www.eoddata.com/stocklist/USMF/",letters[lettercnt],".htm"),encoding = "UTF-8")
       nodes     <- getNodeSet(html_text, "//table[@class='quotes']//td/a")
-            
+     
             #strip Ticker Value from nodes and append to TickerList vector
           if (length(nodes) > 0) {
             TickerList <- cbind(TickerList,sapply(nodes, xmlValue))
@@ -55,6 +56,7 @@ getKeyStats_xpath <- function(symbol="Finder") {
       #Do not want to receive data for these Tickers captured
     RemoveTickers<-which(TickerList %in%  c("COMP",  "DJI",   "SP500", "DAX",   "FTSE",  "NI225", "CAC40", "GLD",   "BDI",   "HSI"))
     TickerList<- TickerList[-RemoveTickers]
+
     
   return(TickerList)
   }
@@ -73,15 +75,9 @@ getKeyStats_xpath <- function(symbol="Finder") {
       #Loop through PageLookup values to define data.frame yahoo values
     PageCnt<- 1
     for(PageCnt in 1:nrow(GooglePageLookup)){
+
       html_text <- htmlParse(paste0(GooglePageLookup$URL[PageCnt], symbol), encoding="UTF-8")
       nodes     <- getNodeSet(html_text,GooglePageLookup$XPATHQuery[PageCnt])      
-
-paste0("//div[contains(",GooglePageLookup$AttrType[PageCnt],",'",GooglePageLookup$AttrValue[PageCnt],"')]")
-paste0(GooglePageLookup$URL[PageCnt], symbol)
-html_text
-getNodeSet(html_text,"//div[contains(@class, 'sector performance')]//td[not(contains(@class, 'bar'))]")
-nodes
-
 
   if(length(nodes) > 0 ) {
       ##Define column names and data values
@@ -111,6 +107,9 @@ nodes
           measures<- as.character(SummaryReturns.DF$measures[which(SummaryReturns.DF$recordType == "Odd")])
           values  <- as.character(SummaryReturns.DF$measures[which(SummaryReturns.DF$recordType == "Even")])
           
+          #only care about first 8 columns
+          measures<-measures[1:8]
+          values  <-values[1:8]
           }
 
           #Define Data.Frame df as ticker symbol and Measure/values defined above
@@ -118,8 +117,12 @@ nodes
         colnames(df) <- c("Symbol",measures)
         
           #If first loop, initialize YahooDataFrame, else Merge YahooDataFrame with new df Page data by Ticker Symbol
-        if(PageCnt == 1)
-          YahooDataFrame<-df
+        if(PageCnt == 1){
+          # df$SymbolDescription<-paste(getQuote(symbol, what=yahooQF("Name"))[,2]) 
+          desc <- as.data.frame(paste(getQuote(symbol, what=yahooQF("Name"))[,2]))
+          colnames(desc)<-"Symbol Description"
+          YahooDataFrame<-cbind(desc,df)
+          }
         else
           YahooDataFrame<-merge(YahooDataFrame,df,by="Symbol")
       }
@@ -138,27 +141,43 @@ getDoParWorkers()
 
 TickerList<-getKeyStats_xpath()
 
-# TickerList<-TickerList[1:100]
+
+TickerList<-TickerList[1:10]
+# TickerList
+
 #print(paste("Estimated Time to completion:",length(TickerList)/3/60/60,"Hours"))
 StartTime<-Sys.time()
   ##YahooDataFrame<-as.data.frame(do.call(rbind,lapply(TickerList,getKeyStats_xpath)),stringsAsFactors=FALSE)
   TickerCnt<- 1
   
-  YahooDataFrame<-foreach(TickerCnt = 1:length(TickerList), .combine = rbind,.packages = 'XML') %dopar% 
+  YahooDataFrame<-foreach(TickerCnt = 1:length(TickerList), .combine = rbind,.packages = c('XML','quantmod')) %dopar% 
                       {
-                        getKeyStats_xpath(TickerList[[TickerCnt]])
-                        # if(TickerCnt %% 299 == 0) {
-                        #   diff<-as.numeric(Sys.time()-StartTime)
-                        #   sleepTime<-(60-(diff %% 60))*30 ## only 400 yahoo scrapes allowed every half hour per core(i.e. 1200 scrapes per half hour)
-                        #   Sys.sleep(sleepTime)
-                        # }
+                        YDFrow<-getKeyStats_xpath(TickerList[[TickerCnt]])
+                        
+                        if(TickerCnt %% 10 == 0) {
+                          diff<-as.numeric(Sys.time()-StartTime)
+                          sleepTime<-sample(1:30,1)     ###(60-(diff %% 60))*30 ## only 299 yahoo scrapes allowed every half hour per core(i.e. 1200 scrapes per half hour)
+                          Sys.sleep(sleepTime)
+                        }
+                        
+                        return(YDFrow)
                       }
 EndTime<-Sys.time()
 print(EndTime-StartTime)
 
 
+library(quantmod) 
+sym <- "FOCPX" 
+paste(getQuote(sym, what=yahooQF("Name"))[,2]) 
+"Cisco Systems, In" 
+
+
+
+
 #######Clean data
 str(YahooDataFrame)
+
+formattable(YahooDataFrame)
 
 YahooDataFrame.Cleaned<- YahooDataFrame[which(  !is.na(YahooDataFrame$Symbol) 
                                               & !is.na(YahooDataFrame$`Morningstar Return Rating`) 
