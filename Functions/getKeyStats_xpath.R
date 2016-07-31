@@ -76,12 +76,16 @@ getKeyStats_xpath <- function(symbol="Finder") {
     GooglePageLookup<- data.frame(Name=character(),URL=character(),XPATHQuery=character())
     GooglePageLookup<- rbind(GooglePageLookup,data.frame(Name="Category",           URL="http://www.google.com/finance?q=MUTF:", XPATHQuery= "//*[@id='gf-viewc']//div[contains(@class, 'sector')]//div[contains(@class, 'subsector')]"))
     GooglePageLookup<- rbind(GooglePageLookup,data.frame(Name="SummaryReturns",     URL="http://www.google.com/finance?q=MUTF:", XPATHQuery= "//div[contains(@class, 'sector performance')]//td[not(contains(@class, 'bar'))]"))
-
+    GooglePageLookup<- rbind(GooglePageLookup,data.frame(Name="Ratings",            URL="http://www.google.com/finance?q=MUTF:", XPATHQuery= "//div[contains(@class, 'sector')]//div[contains(@class, 'subsector')]//td[contains(@class,'name')]"))
+    GooglePageLookup<- rbind(GooglePageLookup,data.frame(Name="Expenses",           URL="http://www.google.com/finance?q=MUTF:", XPATHQuery= "//div[contains(@class, 'sector')]//div[contains(@class, 'subsector')]//td[contains(@class,'name')]"))
+    GooglePageLookup<- rbind(GooglePageLookup,data.frame(Name="Allocation",         URL="http://www.google.com/finance?q=MUTF:", XPATHQuery= "//div[contains(@class, 'sector')]/table//td[contains(@class,'name')]"))
+    GooglePageLookup<- rbind(GooglePageLookup,data.frame(Name="Purchasing",         URL="http://www.google.com/finance?q=MUTF:", XPATHQuery= "//div[contains(@class, 'sector')]/table//td[contains(@class,'name')]"))
+  
     GPLID<- row.names(GooglePageLookup)
     GooglePageLookup<- cbind(GPLID,GooglePageLookup)
 
       #Loop through PageLookup values to define data.frame yahoo values
-    PageCnt<- 1
+    PageCnt<- 5
     for(PageCnt in 1:nrow(GooglePageLookup)){
 
       if(PageCnt == 1){
@@ -96,11 +100,12 @@ getKeyStats_xpath <- function(symbol="Finder") {
       ##Define column names and data values
     measures <- sapply(nodes, xmlValue)
     values <- sapply(nodes, function(x)  xmlValue(getSibling(x)))
-
-    
+measures
+values    
       #Clean up the column name (Global Cleanup)
     measures <- gsub("\\s$","",gsub("[:*:]$","",gsub("[:(:].*[:):]","",gsub("\n\\s*","",gsub(" *[0-9]*:", "", gsub(" \\(.*?\\)[0-9]*:","", measures)))))) 
-
+    values   <- gsub("\\s$","",gsub("[:*:]$","",gsub("[:(:].*[:):]","",gsub("\n\\s*","",gsub(" *[0-9]*:", "", gsub(" \\(.*?\\)[0-9]*:","", values)))))) 
+    
             #Custom Cleanup for the SummaryReturns Page
         if (GooglePageLookup$Name[PageCnt] == "SummaryReturns"){ #remove columns which contain only numerical values
           #remove Blanks
@@ -132,7 +137,36 @@ getKeyStats_xpath <- function(symbol="Finder") {
             
             values  <-substr(measures[1],22,999)
             measures<-substr(measures[1],1,20)
-            }
+          }else if(GooglePageLookup$Name[PageCnt] == "Ratings"){
+            #identify only rating data
+            start<-as.numeric(grep('3 years', measures, perl=T))
+            finish<-start+11
+            measures <-measures[start:finish]
+            
+            Ratings.DF<-as.data.frame(cbind(measures,c("Type","Return","Risk")))
+            colnames(Ratings.DF)<-c("measures","recordType")
+
+            measures<- c("3-year Return Rating","3-year Risk Rating","5-year Return Rating","5-year Risk Rating","10-year Return Rating","10-year Risk Rating","Overall Return Rating","Overall Risk Rating")
+            values  <- as.character(Ratings.DF[c("2","3","5","6","8","9","11","12"),1])
+          }else if(GooglePageLookup$Name[PageCnt] == "Expenses"){
+            #identify only rating data
+            start<-as.numeric(grep('Total assets', measures, perl=T))
+            finish<-start+5
+            measures <-measures[start:finish]
+            values   <-values[start:finish]
+          }else if(GooglePageLookup$Name[PageCnt] == "Allocation"){
+            #identify only rating data
+            start<-as.numeric(grep('Cash', measures, perl=T))
+            finish<-start+4
+            measures <-measures[start:finish]
+            values   <-values[start:finish]
+          }else if(GooglePageLookup$Name[PageCnt] == "Purchasing"){
+            #identify only rating data
+            start<-as.numeric(grep('Initial', measures, perl=T))
+            finish<-start+1
+            measures <-measures[start:finish]
+            values   <-values[start:finish]
+          }
 
           #Define Data.Frame df as ticker symbol and Measure/values defined above
         df <- data.frame(symbol,t(values),stringsAsFactors = FALSE)
