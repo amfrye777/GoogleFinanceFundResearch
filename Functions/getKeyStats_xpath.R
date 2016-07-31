@@ -17,6 +17,13 @@
 
 ##This function will produce a data.frame df output variable containing
 #######################################################################
+# install.packages('XML')
+# install.packages('plyr')
+# install.packages('formattable')
+# install.packages('doParallel')
+# install.packages('foreach')
+# install.packages('quantmod') 
+
 library(XML)
 library(plyr)
 library(formattable)
@@ -67,6 +74,7 @@ getKeyStats_xpath <- function(symbol="Finder") {
   if (symbol != "Finder") {    
       ##Define Lookup metadata values for Google Site 
     GooglePageLookup<- data.frame(Name=character(),URL=character(),XPATHQuery=character())
+    GooglePageLookup<- rbind(GooglePageLookup,data.frame(Name="Category",           URL="http://www.google.com/finance?q=MUTF:", XPATHQuery= "//*[@id='gf-viewc']//div[contains(@class, 'sector')]//div[contains(@class, 'subsector')]"))
     GooglePageLookup<- rbind(GooglePageLookup,data.frame(Name="SummaryReturns",     URL="http://www.google.com/finance?q=MUTF:", XPATHQuery= "//div[contains(@class, 'sector performance')]//td[not(contains(@class, 'bar'))]"))
 
     GPLID<- row.names(GooglePageLookup)
@@ -76,14 +84,20 @@ getKeyStats_xpath <- function(symbol="Finder") {
     PageCnt<- 1
     for(PageCnt in 1:nrow(GooglePageLookup)){
 
-      html_text <- htmlParse(paste0(GooglePageLookup$URL[PageCnt], symbol), encoding="UTF-8")
-      nodes     <- getNodeSet(html_text,GooglePageLookup$XPATHQuery[PageCnt])      
+      if(PageCnt == 1){
+        html_text <- htmlParse(paste0(GooglePageLookup$URL[PageCnt], symbol), encoding="UTF-8")
+      }else if(GooglePageLookup$URL[PageCnt] != GooglePageLookup$URL[PageCnt-1]){
+        html_text <- htmlParse(paste0(GooglePageLookup$URL[PageCnt], symbol), encoding="UTF-8")
+      }
+     
+    nodes     <- getNodeSet(html_text,GooglePageLookup$XPATHQuery[PageCnt])      
 
   if(length(nodes) > 0 ) {
       ##Define column names and data values
     measures <- sapply(nodes, xmlValue)
     values <- sapply(nodes, function(x)  xmlValue(getSibling(x)))
 
+    
       #Clean up the column name (Global Cleanup)
     measures <- gsub("\\s$","",gsub("[:*:]$","",gsub("[:(:].*[:):]","",gsub("\n\\s*","",gsub(" *[0-9]*:", "", gsub(" \\(.*?\\)[0-9]*:","", measures)))))) 
 
@@ -110,26 +124,43 @@ getKeyStats_xpath <- function(symbol="Finder") {
           #only care about first 8 columns
           measures<-measures[1:8]
           values  <-values[1:8]
-          }
+          }else if(GooglePageLookup$Name[PageCnt] == "Category"){
+            #Identify Morningstar Category from measures
+            measures<-measures[grep('Morningstar category', measures, perl=T)]
+            
+            #re-define measures and values
+            
+            values  <-substr(measures[1],22,999)
+            measures<-substr(measures[1],1,20)
+            }
 
           #Define Data.Frame df as ticker symbol and Measure/values defined above
         df <- data.frame(symbol,t(values),stringsAsFactors = FALSE)
         colnames(df) <- c("Symbol",measures)
         
-          #If first loop, initialize YahooDataFrame, else Merge YahooDataFrame with new df Page data by Ticker Symbol
+          #If Category, Merge df with categories.
+        if(GooglePageLookup$Name[PageCnt] == "Category"){
+          source("functions/categoriesSource.R")
+          df<- merge(df,Categories,by.x = "Morningstar category",by.y = "Category", all.x = TRUE)
+          df <- df[,c("Symbol","CategoryGroup","Morningstar category")]
+          }
+        
+          #If first loop, initialize GoogleDataFrame, else Merge GoogleDataFrame with new df Page data by Ticker Symbol
         if(PageCnt == 1){
+          
           # df$SymbolDescription<-paste(getQuote(symbol, what=yahooQF("Name"))[,2]) 
           desc <- as.data.frame(paste(getQuote(symbol, what=yahooQF("Name"))[,2]))
           colnames(desc)<-"Symbol Description"
-          YahooDataFrame<-cbind(desc,df)
+          GoogleDataFrame<-cbind(desc,df)
           }
         else
-          YahooDataFrame<-merge(YahooDataFrame,df,by="Symbol")
+          GoogleDataFrame<-merge(GoogleDataFrame,df,by="Symbol")
       }
       else
           return(NA)
     }
-  return(YahooDataFrame)
+    GoogleDataFrame
+  return(GoogleDataFrame)
   }
 }
 
@@ -147,12 +178,12 @@ TickerList<-TickerList[1:10]
 
 #print(paste("Estimated Time to completion:",length(TickerList)/3/60/60,"Hours"))
 StartTime<-Sys.time()
-  ##YahooDataFrame<-as.data.frame(do.call(rbind,lapply(TickerList,getKeyStats_xpath)),stringsAsFactors=FALSE)
+  ##GoogleDataFrame<-as.data.frame(do.call(rbind,lapply(TickerList,getKeyStats_xpath)),stringsAsFactors=FALSE)
   TickerCnt<- 1
   
-  YahooDataFrame<-foreach(TickerCnt = 1:length(TickerList), .combine = rbind,.packages = c('XML','quantmod')) %dopar% 
+  GoogleDataFrame<-foreach(TickerCnt = 1:length(TickerList), .combine = rbind,.packages = c('XML','quantmod')) %dopar% 
                       {
-                        YDFrow<-getKeyStats_xpath(TickerList[[TickerCnt]])
+                        GGLrow<-getKeyStats_xpath(TickerList[[TickerCnt]])
                         
                         if(TickerCnt %% 10 == 0) {
                           diff<-as.numeric(Sys.time()-StartTime)
@@ -160,7 +191,7 @@ StartTime<-Sys.time()
                           Sys.sleep(sleepTime)
                         }
                         
-                        return(YDFrow)
+                        return(GGLrow)
                       }
 EndTime<-Sys.time()
 print(EndTime-StartTime)
@@ -175,39 +206,39 @@ paste(getQuote(sym, what=yahooQF("Name"))[,2])
 
 
 #######Clean data
-str(YahooDataFrame)
+str(GoogleDataFrame)
 
-formattable(YahooDataFrame)
+formattable(GoogleDataFrame)
 
-YahooDataFrame.Cleaned<- YahooDataFrame[which(  !is.na(YahooDataFrame$Symbol) 
-                                              & !is.na(YahooDataFrame$`Morningstar Return Rating`) 
-                                              & !is.na(YahooDataFrame$`Morningstar Risk Rating`) 
-                                              & YahooDataFrame$`Morningstar Return Rating`          != '' 
-                                              & YahooDataFrame$`Morningstar Risk Rating`            != '' 
+GoogleDataFrame.Cleaned<- GoogleDataFrame[which(  !is.na(GoogleDataFrame$Symbol) 
+                                              & !is.na(GoogleDataFrame$`Morningstar Return Rating`) 
+                                              & !is.na(GoogleDataFrame$`Morningstar Risk Rating`) 
+                                              & GoogleDataFrame$`Morningstar Return Rating`          != '' 
+                                              & GoogleDataFrame$`Morningstar Risk Rating`            != '' 
                                               & (
-                                                 YahooDataFrame$`Min Initial Investment`            <= 3000   |
-                                                 YahooDataFrame$`Min Initial Investment, IRA`       <= 3000
+                                                 GoogleDataFrame$`Min Initial Investment`            <= 3000   |
+                                                 GoogleDataFrame$`Min Initial Investment, IRA`       <= 3000
                                                 )
-                                              & YahooDataFrame$`Morningstar Return Rating`          >= 3
-                                              & YahooDataFrame$`Morningstar Risk Rating`            <= 3
+                                              & GoogleDataFrame$`Morningstar Return Rating`          >= 3
+                                              & GoogleDataFrame$`Morningstar Risk Rating`            <= 3
                                               )
                                         ,]
 
-str(YahooDataFrame.Cleaned)
+str(GoogleDataFrame.Cleaned)
 
-formattable(YahooDataFrame.Cleaned)
+formattable(GoogleDataFrame.Cleaned)
 
 
 # 
 # TickerCnt<- 1
 # for(TickerCnt in 1:length(TickerList)) {
 #   if(TickerCnt == 1)
-#     YahooDataFrame<-getKeyStats_xpath(TickerList[[TickerCnt]])
+#     GoogleDataFrame<-getKeyStats_xpath(TickerList[[TickerCnt]])
 #   else
-#     YahooDataFrame<-rbind(YahooDataFrame,getKeyStats_xpath(TickerList[[TickerCnt]]))
+#     GoogleDataFrame<-rbind(GoogleDataFrame,getKeyStats_xpath(TickerList[[TickerCnt]]))
 #   print(TickerList[[TickerCnt]])
 #   print(paste("TickerCnt for loop:",TickerCnt))
-#   print(paste("RowCnt Generated:",nrow(YahooDataFrame)))
+#   print(paste("RowCnt Generated:",nrow(GoogleDataFrame)))
 #   TickerCnt <- TickerCnt+1
 # }
 # 
