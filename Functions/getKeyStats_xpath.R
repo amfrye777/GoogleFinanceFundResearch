@@ -31,7 +31,7 @@ library(doParallel)
 library(foreach)
 library(quantmod) 
 
-symbol<-"FOCPX"
+symbol<-"AAAAX"
 
 getKeyStats_xpath <- function(symbol="Finder") {
   ############################################################################################  
@@ -85,7 +85,7 @@ getKeyStats_xpath <- function(symbol="Finder") {
     GooglePageLookup<- cbind(GPLID,GooglePageLookup)
 
       #Loop through PageLookup values to define data.frame yahoo values
-    PageCnt<- 5
+    PageCnt<- 2
     for(PageCnt in 1:nrow(GooglePageLookup)){
 
       if(PageCnt == 1){
@@ -100,8 +100,7 @@ getKeyStats_xpath <- function(symbol="Finder") {
       ##Define column names and data values
     measures <- sapply(nodes, xmlValue)
     values <- sapply(nodes, function(x)  xmlValue(getSibling(x)))
-measures
-values    
+  
       #Clean up the column name (Global Cleanup)
     measures <- gsub("\\s$","",gsub("[:*:]$","",gsub("[:(:].*[:):]","",gsub("\n\\s*","",gsub(" *[0-9]*:", "", gsub(" \\(.*?\\)[0-9]*:","", measures)))))) 
     values   <- gsub("\\s$","",gsub("[:*:]$","",gsub("[:(:].*[:):]","",gsub("\n\\s*","",gsub(" *[0-9]*:", "", gsub(" \\(.*?\\)[0-9]*:","", values)))))) 
@@ -157,15 +156,15 @@ values
           }else if(GooglePageLookup$Name[PageCnt] == "Allocation"){
             #identify only rating data
             start<-as.numeric(grep('Cash', measures, perl=T))
-            finish<-start+4
+            finish<-as.numeric(grep('Other', measures, perl=T))
             measures <-measures[start:finish]
             values   <-values[start:finish]
           }else if(GooglePageLookup$Name[PageCnt] == "Purchasing"){
             #identify only rating data
-            start<-as.numeric(grep('Initial', measures, perl=T))
-            finish<-start+1
-            measures <-measures[start:finish]
-            values   <-values[start:finish]
+            Initial<-as.numeric(which(measures == 'Initial'))
+            InitialIRA<-as.numeric(which(measures == 'IRA Initial'))
+            measures <-measures[c(Initial,InitialIRA)]
+            values   <-values[c(Initial,InitialIRA)]
           }
 
           #Define Data.Frame df as ticker symbol and Measure/values defined above
@@ -193,7 +192,6 @@ values
       else
           return(NA)
     }
-    GoogleDataFrame
   return(GoogleDataFrame)
   }
 }
@@ -207,8 +205,7 @@ getDoParWorkers()
 TickerList<-getKeyStats_xpath()
 
 
-TickerList<-TickerList[1:10]
-# TickerList
+TickerList<-TickerList[1:1000]
 
 #print(paste("Estimated Time to completion:",length(TickerList)/3/60/60,"Hours"))
 StartTime<-Sys.time()
@@ -221,7 +218,7 @@ StartTime<-Sys.time()
                         
                         if(TickerCnt %% 10 == 0) {
                           diff<-as.numeric(Sys.time()-StartTime)
-                          sleepTime<-sample(1:30,1)     ###(60-(diff %% 60))*30 ## only 299 yahoo scrapes allowed every half hour per core(i.e. 1200 scrapes per half hour)
+                          sleepTime<-sample(15:45,1)     ###(60-(diff %% 60))*30 ## only 299 yahoo scrapes allowed every half hour per core(i.e. 1200 scrapes per half hour)
                           Sys.sleep(sleepTime)
                         }
                         
@@ -229,14 +226,6 @@ StartTime<-Sys.time()
                       }
 EndTime<-Sys.time()
 print(EndTime-StartTime)
-
-
-library(quantmod) 
-sym <- "FOCPX" 
-paste(getQuote(sym, what=yahooQF("Name"))[,2]) 
-"Cisco Systems, In" 
-
-
 
 
 #######Clean data
